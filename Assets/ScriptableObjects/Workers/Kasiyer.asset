@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f7ffb374495318a498fb1b04881d5bae, type: 3}
+  m_Name: Kasiyer
+  m_EditorClassIdentifier: Assembly-CSharp::WorkerConfigData
+  workerType: kasiyer
+  displayName: Kasiyer
+  workerIcon: {fileID: 0}
+  baseCost: 300
+  upgradeCosts:
+  - 800
+  - 2000
+  - 5000
+  - 12000
+  bonusValues:
+  - 1.2
+  - 1.5
+  - 2
+  - 2.5
+  - 3
+  bonusDescription: Siparis alma hizini artirir
+  unlockAtShopLevel: 3

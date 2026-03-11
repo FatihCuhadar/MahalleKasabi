@@ -2,6 +2,7 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.InputSystem;
+using TMPro;
 
 public class HUDController : MonoBehaviour
 {
@@ -11,6 +12,8 @@ public class HUDController : MonoBehaviour
     [SerializeField] private bool debugTapAnywhere;
 
     private Coroutine prepCoroutine;
+    private TMP_Text counterButtonText;
+    private Image counterButtonImage;
     private Color normalBarColor = new Color(0.05f, 0.45f, 0.47f, 1f); // teal #0D7377
     private Color flashColor = new Color(0.96f, 0.64f, 0.13f, 1f);     // gold  #F4A422
 
@@ -26,6 +29,16 @@ public class HUDController : MonoBehaviour
 
         if (prepProgressBar != null)
             prepProgressBar.fillAmount = 0f;
+
+        if (counterButton != null)
+        {
+            counterButtonText = counterButton.GetComponentInChildren<TMP_Text>();
+            counterButtonImage = counterButton.GetComponent<Image>();
+        }
+
+        if (OrderManager.Instance != null)
+            OrderManager.Instance.OnOrderStateChanged += RefreshButtonState;
+        RefreshButtonState();
     }
 
     void Update()
@@ -49,6 +62,8 @@ public class HUDController : MonoBehaviour
             counterButton.onClick.RemoveListener(OnCounterTap);
         if (upgradeButton != null)
             upgradeButton.onClick.RemoveListener(OnUpgradeTap);
+        if (OrderManager.Instance != null)
+            OrderManager.Instance.OnOrderStateChanged -= RefreshButtonState;
     }
 
     private void OnUpgradeTap()
@@ -70,66 +85,41 @@ public class HUDController : MonoBehaviour
             return;
         }
 
-        int orderCount = OrderManager.Instance.GetActiveOrderCount();
-        if (orderCount == 0)
+        if (OrderManager.Instance.GetReadyOrderCount() > 0)
         {
-            Debug.Log("[HUD] OnCounterTap — no active orders (0)");
+            OrderManager.Instance.FulfillFrontReadyOrder();
+            StartCoroutine(AnimationHelper.PunchScale(counterButton.transform, 0.1f, 0.3f));
+            RefreshButtonState();
             return;
         }
 
-        Debug.Log($"[HUD] Counter tapped! Active orders: {orderCount}. Starting prep...");
+        if (!OrderManager.Instance.TryStartPreparingFrontOrder())
+        {
+            Debug.Log("[HUD] OnCounterTap — hazirlanacak uygun siparis yok");
+            return;
+        }
         AudioManager.Instance?.Play("button_click");
-
-        // Get prep time for the front order (index 0)
-        float prepTime = 1f;
-        Order front = OrderManager.Instance.GetFrontOrder();
-        if (ShopManager.Instance != null && front != null)
-            prepTime = ShopManager.Instance.GetPreparationTime(front.product);
-
-        prepCoroutine = StartCoroutine(ShowPrepProgress(prepTime));
+        if (prepCoroutine != null) StopCoroutine(prepCoroutine);
+        prepCoroutine = StartCoroutine(TrackFirstStationProgress());
+        RefreshButtonState();
     }
 
-    private IEnumerator ShowPrepProgress(float duration)
+    private IEnumerator TrackFirstStationProgress()
     {
-        if (prepProgressBar == null)
+        while (OrderManager.Instance != null && OrderManager.Instance.GetPreparingCount() > 0)
         {
-            yield return new WaitForSeconds(duration);
-            OrderManager.Instance?.FulfillFrontOrder();
-            if (counterButton != null) counterButton.interactable = true;
-            prepCoroutine = null;
-            yield break;
-        }
-
-        prepProgressBar.fillAmount = 0f;
-        prepProgressBar.color = normalBarColor;
-        if (counterButton != null) counterButton.interactable = false;
-
-        float elapsed = 0f;
-        while (elapsed < duration)
-        {
-            if (!gameObject.activeSelf) yield break;
-            elapsed += Time.deltaTime;
-            prepProgressBar.fillAmount = Mathf.Clamp01(elapsed / duration);
+            if (prepProgressBar != null)
+            {
+                prepProgressBar.fillAmount = OrderManager.Instance.GetFirstStationProgress();
+                prepProgressBar.color = normalBarColor;
+            }
+            SetPreparingVisual();
             yield return null;
         }
 
-        prepProgressBar.fillAmount = 1f;
-
-        // Fulfill the front order now that prep is done
-        Debug.Log("[HUD] Prep complete — fulfilling front order");
-        OrderManager.Instance?.FulfillFrontOrder();
-
-        // Flash effect
-        AudioManager.Instance?.Play("order_complete");
-        yield return StartCoroutine(FlashBar());
-        if (counterButton != null)
-        {
-            counterButton.interactable = true;
-            yield return StartCoroutine(AnimationHelper.PunchScale(counterButton.transform, 0.1f, 0.3f));
-        }
-
-        prepProgressBar.fillAmount = 0f;
+        if (prepProgressBar != null) prepProgressBar.fillAmount = 0f;
         prepCoroutine = null;
+        RefreshButtonState();
     }
 
     private IEnumerator FlashBar()
@@ -147,5 +137,35 @@ public class HUDController : MonoBehaviour
         }
 
         prepProgressBar.color = normalBarColor;
+    }
+
+    private void RefreshButtonState()
+    {
+        if (OrderManager.Instance == null || counterButton == null) return;
+
+        bool hasReady = OrderManager.Instance.GetReadyOrderCount() > 0;
+        bool hasPreparing = OrderManager.Instance.GetPreparingCount() > 0;
+        counterButton.interactable = hasReady || hasPreparing || OrderManager.Instance.GetActiveOrderCount() > 0;
+
+        if (hasReady)
+        {
+            if (counterButtonText != null) counterButtonText.text = "TESLIM ET!";
+            if (counterButtonImage != null) counterButtonImage.color = new Color(0.22f, 0.72f, 0.31f, 0.92f);
+        }
+        else if (hasPreparing)
+        {
+            SetPreparingVisual();
+        }
+        else
+        {
+            if (counterButtonText != null) counterButtonText.text = "SIPARIS VER";
+            if (counterButtonImage != null) counterButtonImage.color = new Color(0.91f, 0.47f, 0.17f, 0.8f);
+        }
+    }
+
+    private void SetPreparingVisual()
+    {
+        if (counterButtonText != null) counterButtonText.text = "Hazirlaniyor...";
+        if (counterButtonImage != null) counterButtonImage.color = new Color(0.82f, 0.18f, 0.18f, 0.9f);
     }
 }

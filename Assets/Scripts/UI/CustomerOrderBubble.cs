@@ -5,9 +5,11 @@ using TMPro;
 public class CustomerOrderBubble : MonoBehaviour
 {
     [SerializeField] private Image productIcon;
+    [SerializeField] private Image backgroundImage;
     [SerializeField] private TMP_Text productNameText;
     [SerializeField] private TMP_Text quantityText;
     [SerializeField] private Image patienceBar;
+    [SerializeField] private TMP_Text vipBadgeText;
     [SerializeField] private Vector3 localFollowOffset = new Vector3(0f, 1.8f, 0f);
 
     public void AttachTo(Transform owner, Vector3 localOffset)
@@ -30,6 +32,46 @@ public class CustomerOrderBubble : MonoBehaviour
 
         if (quantityText != null)
             quantityText.text = $"x{Mathf.Max(1, quantity)}";
+
+        if (patienceBar != null)
+        {
+            patienceBar.fillAmount = 1f;
+            patienceBar.color = Color.green;
+        }
+    }
+
+    public void ShowOrder(Order order, CustomerTypeStats stats)
+    {
+        gameObject.SetActive(true);
+        if (order == null) return;
+
+        if (backgroundImage != null)
+            backgroundImage.color = stats != null ? stats.bubbleTint : new Color(0.96f, 0.96f, 0.96f, 1f);
+
+        if (productNameText != null)
+        {
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            for (int i = 0; i < order.lines.Count; i++)
+            {
+                var line = order.lines[i];
+                if (line.product == null) continue;
+                sb.Append(line.product.productName);
+                sb.Append(" x");
+                sb.Append(Mathf.Max(1, line.quantity));
+                if (i < order.lines.Count - 1) sb.Append('\n');
+            }
+            productNameText.text = sb.ToString();
+        }
+
+        if (quantityText != null)
+            quantityText.text = string.Empty;
+
+        if (vipBadgeText != null)
+        {
+            bool isVip = stats != null && stats.vipBadge;
+            vipBadgeText.gameObject.SetActive(isVip);
+            vipBadgeText.text = isVip ? "VIP" : string.Empty;
+        }
 
         if (patienceBar != null)
         {

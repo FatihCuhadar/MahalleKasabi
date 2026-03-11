@@ -33,6 +33,7 @@ public class PlayerData : MonoBehaviour
         currentMoney += amount;
         totalEarned += amount;
         Debug.Log($"[PlayerData] Money added: +{amount:F0} TL → Total: {currentMoney:F0} TL");
+        GameEvents.RaiseMoneyEarned(amount);
         UIManager.Instance?.RefreshMoneyUI();
     }
 

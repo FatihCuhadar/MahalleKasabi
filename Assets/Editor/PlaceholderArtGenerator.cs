@@ -15,18 +15,27 @@ public static class PlaceholderArtGenerator
         EnsureFolder(OutputFolder);
 
         Sprite customerBody = SaveAndImport("customer_body.png", CreateCustomerTexture(new Color(0.1f, 0.1f, 0.18f), Color.white));
+        Sprite customerNormal = SaveAndImport("customer_normal.png", CreateCustomerTexture(new Color(0.1f, 0.1f, 0.18f), Color.white));
+        Sprite customerFast = SaveAndImport("customer_fast.png", CreateCustomerTexture(new Color(0.1f, 0.1f, 0.18f), new Color(0.95f, 0.35f, 0.35f)));
+        Sprite customerPatient = SaveAndImport("customer_patient.png", CreateCustomerTexture(new Color(0.1f, 0.1f, 0.18f), new Color(0.45f, 0.65f, 1f)));
+        Sprite customerVip = SaveAndImport("customer_vip.png", CreateVipCustomerTexture());
         Sprite customerHappy = SaveAndImport("customer_happy.png", CreateCustomerTexture(new Color(0.1f, 0.1f, 0.18f), new Color(0.98f, 0.86f, 0.35f)));
         Sprite customerAngry = SaveAndImport("customer_angry.png", CreateCustomerTexture(new Color(0.1f, 0.1f, 0.18f), new Color(0.9f, 0.2f, 0.2f)));
         Sprite shopCounter = SaveAndImport("shop_counter.png", CreateShopCounterTexture());
         Sprite backgroundShop = SaveAndImport("background_shop.png", CreateBackgroundTexture());
         Sprite coinIcon = SaveAndImport("coin_icon.png", CreateCoinTexture());
         Sprite queueArrow = SaveAndImport("queue_arrow.png", CreateQueueArrowTexture());
+        SaveAndImport("prep_station_bg.png", CreateRoundedRectTexture(128, 64, 8, Hex("#5C3317")));
+        SaveAndImport("upgrade_card_bg.png", CreateRoundedRectTexture(300, 120, 10, Hex("#16213E")));
+        SaveAndImport("star_filled.png", CreateStarTexture(Hex("#F4A422")));
+        SaveAndImport("star_empty.png", CreateStarTexture(new Color(0.4f, 0.4f, 0.4f, 1f)));
+        SaveAndImport("badge_bg.png", CreateRoundedRectTexture(200, 60, 10, Hex("#0D7377")));
         Sprite bubbleRounded = SaveAndImport("bubble_rounded.png", CreateRoundedRectTexture(128, 84, 12, Color.white));
         Sprite bubbleTail = SaveAndImport("bubble_tail.png", CreateBubbleTailTexture());
         Sprite whitePixel = SaveAndImport("white_pixel.png", CreateSolidTexture(8, 8, Color.white));
 
         ConfigureOrderBubblePrefab(bubbleRounded, bubbleTail, whitePixel);
-        ConfigureCustomerPrefab(customerBody, customerHappy, customerAngry);
+        ConfigureCustomerPrefab(customerNormal != null ? customerNormal : customerBody, customerHappy, customerAngry, customerVip);
         WireSceneSprites(shopCounter, backgroundShop, queueArrow, coinIcon);
 
         AssetDatabase.SaveAssets();
@@ -90,6 +99,18 @@ public static class PlaceholderArtGenerator
         RectTransform qtyRect = qtyGO.GetComponent<RectTransform>();
         Stretch(qtyRect, new Vector2(0.2f, 0.3f), new Vector2(0.8f, 0.52f));
 
+        GameObject vipGO = NewUI("VipBadgeText", root.transform);
+        TextMeshProUGUI vipText = vipGO.AddComponent<TextMeshProUGUI>();
+        vipText.fontSize = 12;
+        vipText.fontStyle = FontStyles.Bold;
+        vipText.color = new Color(0.85f, 0.55f, 0.05f, 1f);
+        vipText.alignment = TextAlignmentOptions.TopRight;
+        vipText.text = "VIP";
+        vipText.raycastTarget = false;
+        RectTransform vipRect = vipGO.GetComponent<RectTransform>();
+        Stretch(vipRect, new Vector2(0.65f, 0.72f), new Vector2(0.95f, 0.95f));
+        vipGO.SetActive(false);
+
         GameObject barBgGO = NewUI("PatienceBarBG", root.transform);
         Image barBg = barBgGO.AddComponent<Image>();
         barBg.sprite = whitePixel;
@@ -127,6 +148,8 @@ public static class PlaceholderArtGenerator
         so.FindProperty("productNameText").objectReferenceValue = productName;
         so.FindProperty("quantityText").objectReferenceValue = qtyText;
         so.FindProperty("patienceBar").objectReferenceValue = patienceBar;
+        so.FindProperty("backgroundImage").objectReferenceValue = bgImage;
+        so.FindProperty("vipBadgeText").objectReferenceValue = vipText;
         so.FindProperty("productIcon").objectReferenceValue = null;
         so.ApplyModifiedPropertiesWithoutUndo();
 
@@ -134,7 +157,7 @@ public static class PlaceholderArtGenerator
         PrefabUtility.UnloadPrefabContents(root);
     }
 
-    private static void ConfigureCustomerPrefab(Sprite body, Sprite happy, Sprite angry)
+    private static void ConfigureCustomerPrefab(Sprite body, Sprite happy, Sprite angry, Sprite vip)
     {
         const string path = "Assets/Prefabs/Customers/Customer.prefab";
         if (!File.Exists(Path.Combine(Directory.GetCurrentDirectory(), path)))
@@ -161,6 +184,7 @@ public static class PlaceholderArtGenerator
             so.FindProperty("spriteRenderer").objectReferenceValue = renderer;
             so.FindProperty("happySprite").objectReferenceValue = happy;
             so.FindProperty("angrySprite").objectReferenceValue = angry;
+            so.FindProperty("vipSprite").objectReferenceValue = vip;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -335,6 +359,17 @@ public static class PlaceholderArtGenerator
         return tex;
     }
 
+    private static Texture2D CreateVipCustomerTexture()
+    {
+        Texture2D tex = CreateCustomerTexture(new Color(0.1f, 0.1f, 0.18f), new Color(1f, 0.85f, 0.3f));
+        DrawRect(tex, 18, 56, 12, 2, new Color(1f, 0.95f, 0.4f));
+        DrawRect(tex, 20, 58, 2, 3, new Color(1f, 0.95f, 0.4f));
+        DrawRect(tex, 24, 58, 2, 4, new Color(1f, 0.95f, 0.4f));
+        DrawRect(tex, 28, 58, 2, 3, new Color(1f, 0.95f, 0.4f));
+        tex.Apply();
+        return tex;
+    }
+
     private static Texture2D CreateShopCounterTexture()
     {
         Texture2D tex = NewTexture(128, 32);
@@ -381,6 +416,22 @@ public static class PlaceholderArtGenerator
         Color c = Color.white;
         DrawRect(tex, 4, 14, 16, 4, c);
         DrawRightTriangle(tex, 20, 10, 10, 12, c);
+        tex.Apply();
+        return tex;
+    }
+
+    private static Texture2D CreateStarTexture(Color color)
+    {
+        Texture2D tex = NewTexture(24, 24);
+        Fill(tex, new Color(0f, 0f, 0f, 0f));
+        int[,] points = { { 12, 22 }, { 15, 15 }, { 22, 14 }, { 17, 9 }, { 19, 2 }, { 12, 6 }, { 5, 2 }, { 7, 9 }, { 2, 14 }, { 9, 15 } };
+        for (int i = 0; i < points.GetLength(0); i++)
+        {
+            int x = points[i, 0];
+            int y = points[i, 1];
+            DrawFilledCircle(tex, x, y, 2, color);
+        }
+        DrawFilledCircle(tex, 12, 12, 6, color);
         tex.Apply();
         return tex;
     }

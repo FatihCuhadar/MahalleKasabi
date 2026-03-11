@@ -32,15 +32,16 @@ public class OfflineEarningsManager : MonoBehaviour
         float effectiveSeconds = Mathf.Min((float)elapsedSeconds, MAX_OFFLINE_SECONDS);
 
         // Get offline multiplier from ShopManager (muhasebeci bonus)
-        float offlineMultiplier = ShopManager.Instance != null
-            ? ShopManager.Instance.GetOfflineMultiplier()
-            : 1f;
+        float offlineMultiplier = ShopManager.Instance != null ? ShopManager.Instance.GetOfflineMultiplier() : 1f;
 
         float earnings = effectiveSeconds * PlayerData.Instance.moneyPerSecond * offlineMultiplier;
+        float minutes = effectiveSeconds / 60f;
+        float salary = WorkerManager.Instance != null ? WorkerManager.Instance.CalculateOfflineSalary(minutes) : 0f;
+        earnings = Mathf.Max(0f, earnings - salary);
 
         PlayerData.Instance.AddMoney(earnings);
         UIManager.Instance?.ShowOfflineEarningsPopup(earnings, effectiveSeconds);
 
-        Debug.Log($"[OfflineEarnings] {effectiveSeconds:F0}s offline → +{earnings:F0} money (x{offlineMultiplier} multiplier)");
+        Debug.Log($"[OfflineEarnings] {effectiveSeconds:F0}s offline → +{earnings:F0} money (x{offlineMultiplier} - salary {salary:F0})");
     }
 }

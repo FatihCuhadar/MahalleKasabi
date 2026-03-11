@@ -5,8 +5,30 @@ public class ShopManager : MonoBehaviour
 {
     public static ShopManager Instance { get; private set; }
 
-    [SerializeField] private ShopUpgradeData[] upgrades;
-    [SerializeField] private WorkerConfigData[] workerConfigs;
+    private readonly Dictionary<string, int> levels = new Dictionary<string, int>();
+    private readonly Dictionary<string, float[]> costs = new Dictionary<string, float[]>
+    {
+        { "prep_speed", new[] { 500f, 1200f, 2500f, 5000f, 10000f } },
+        { "extra_station", new[] { 2000f, 8000f, 20000f } },
+        { "quality", new[] { 800f, 2000f, 4500f, 9000f, 18000f } },
+        { "capacity", new[] { 1500f, 4000f, 8000f, 15000f, 30000f } },
+        { "menu", new[] { 3000f, 8000f, 20000f, 50000f } },
+        { "vitrin", new[] { 2500f, 10000f, 30000f } }
+    };
+
+    private readonly Dictionary<string, float> workerHireCosts = new Dictionary<string, float>
+    {
+        { "cirak", 5000f },
+        { "yardimci", 15000f },
+        { "usta_kasap", 40000f }
+    };
+
+    private readonly Dictionary<string, float> workerMinuteSalary = new Dictionary<string, float>
+    {
+        { "cirak", 100f },
+        { "yardimci", 300f },
+        { "usta_kasap", 800f }
+    };
 
     void Awake()
     {
@@ -17,205 +39,128 @@ public class ShopManager : MonoBehaviour
         }
         Instance = this;
         DontDestroyOnLoad(gameObject);
+        EnsureDefaults();
     }
 
-    // ───────────────────────── Shop Upgrade ─────────────────────────
-
-    public bool TryUpgradeShop()
+    private void EnsureDefaults()
     {
-        if (PlayerData.Instance == null) return false;
+        string[] keys = { "prep_speed", "extra_station", "quality", "capacity", "menu", "vitrin" };
+        for (int i = 0; i < keys.Length; i++)
+        {
+            if (!levels.ContainsKey(keys[i])) levels[keys[i]] = PlayerPrefs.GetInt("upg_" + keys[i], 0);
+        }
+    }
 
-        int currentLevel = PlayerData.Instance.shopLevel;
-        if (currentLevel >= 10) return false;
+    public bool TryUpgrade(string key)
+    {
+        if (!costs.ContainsKey(key) || PlayerData.Instance == null) return false;
+        int lvl = GetLevel(key);
+        float[] arr = costs[key];
+        if (lvl >= arr.Length) return false;
+        float price = arr[lvl];
+        if (!PlayerData.Instance.SpendMoney(price)) return false;
 
-        float cost = GetUpgradeCost();
-        if (!PlayerData.Instance.SpendMoney(cost)) return false;
-
-        PlayerData.Instance.shopLevel++;
-
-        // Update moneyPerSecond from upgrade data
-        ShopUpgradeData nextData = GetUpgradeData(PlayerData.Instance.shopLevel);
-        if (nextData != null)
-            PlayerData.Instance.moneyPerSecond = nextData.moneyPerSecond;
-
-        AudioManager.Instance?.Play("level_up");
+        levels[key] = lvl + 1;
+        PlayerPrefs.SetInt("upg_" + key, levels[key]);
+        PlayerPrefs.Save();
         UIManager.Instance?.RefreshMoneyUI();
-
-        Debug.Log($"[ShopManager] Shop upgraded to level {PlayerData.Instance.shopLevel}");
         return true;
     }
 
-    public float GetUpgradeCost()
+    public int GetLevel(string key)
     {
-        if (PlayerData.Instance == null) return 0f;
-        int nextLevel = PlayerData.Instance.shopLevel + 1;
-        ShopUpgradeData data = GetUpgradeData(nextLevel);
-        return data != null ? data.cost : 0f;
+        EnsureDefaults();
+        return levels.ContainsKey(key) ? levels[key] : 0;
     }
 
-    public ShopUpgradeData GetCurrentUpgradeData()
+    public float GetUpgradeCost(string key)
     {
-        if (PlayerData.Instance == null) return null;
-        return GetUpgradeData(PlayerData.Instance.shopLevel);
+        if (!costs.ContainsKey(key)) return 0f;
+        int lvl = GetLevel(key);
+        float[] arr = costs[key];
+        if (lvl >= arr.Length) return 0f;
+        return arr[lvl];
     }
 
-    private ShopUpgradeData GetUpgradeData(int level)
+    public bool IsMaxed(string key)
     {
-        if (upgrades == null) return null;
-        foreach (var u in upgrades)
-        {
-            if (u.level == level) return u;
-        }
-        return null;
+        if (!costs.ContainsKey(key)) return true;
+        return GetLevel(key) >= costs[key].Length;
     }
-
-    // ───────────────────────── Preparation Time ─────────────────────────
 
     public float GetPreparationTime(ProductData product)
     {
-        if (product == null) return 1f;
-        float multiplier = GetWorkerSpeedMultiplier();
-        return product.preparationTime / Mathf.Max(multiplier, 0.1f);
+        float baseTime = product != null ? product.GetPrepTime() : 1f;
+        float speed = 1f + (GetLevel("prep_speed") * 0.2f);
+        return baseTime / Mathf.Max(0.1f, speed);
     }
 
-    private float GetWorkerSpeedMultiplier()
+    public int GetStationCount()
     {
-        return GetWorkerBonusValue("kasap_yardimcisi", 1f);
+        return 1 + GetLevel("extra_station");
     }
 
-    // ───────────────────────── Speed Multiplier (Kasiyer) ─────────────────────────
+    public float GetQualityMultiplier()
+    {
+        return 1f + (GetLevel("quality") * 0.15f);
+    }
+
+    public int GetMaxCustomers()
+    {
+        return Mathf.Clamp(3 + GetLevel("capacity"), 3, 8);
+    }
 
     public float GetSpeedMultiplier()
     {
-        return GetWorkerBonusValue("kasiyer", 1f);
+        return 1f + (GetLevel("vitrin") * 0.25f);
     }
 
-    // ───────────────────────── Offline Multiplier (Muhasebeci) ─────────────────────────
-
-    public float GetOfflineMultiplier()
+    public int GetMenuLevel()
     {
-        return GetWorkerBonusValue("muhasebeci", 1f);
+        return 1 + GetLevel("menu");
     }
 
-    // ───────────────────────── Toplu Siparis Bonus (Teslimatci) ─────────────────────────
-
-    public float GetBulkOrderBonus()
+    public bool IsProductUnlocked(ProductData product)
     {
-        return GetWorkerBonusValue("teslimatci", 0f);
+        if (product == null) return false;
+        return product.unlockLevel <= GetMenuLevel() + 1;
     }
-
-    // ───────────────────────── Worker Hire / Upgrade ─────────────────────────
 
     public bool TryHireWorker(string workerType)
     {
-        if (PlayerData.Instance == null) return false;
-
-        // Already hired?
+        if (PlayerData.Instance == null || !workerHireCosts.ContainsKey(workerType)) return false;
         if (IsWorkerHired(workerType)) return false;
 
-        WorkerConfigData config = GetWorkerConfig(workerType);
-        if (config == null) return false;
+        float price = workerHireCosts[workerType];
+        if (!PlayerData.Instance.SpendMoney(price)) return false;
 
-        // Check shop level requirement
-        if (PlayerData.Instance.shopLevel < config.unlockAtShopLevel) return false;
-
-        // Check cost
-        if (!PlayerData.Instance.SpendMoney(config.baseCost)) return false;
-
-        // Add worker to PlayerData
-        WorkerData newWorker = new WorkerData(workerType, 1, true);
-        var workerList = new List<WorkerData>(PlayerData.Instance.workers);
-        workerList.Add(newWorker);
-        PlayerData.Instance.workers = workerList.ToArray();
-
-        AudioManager.Instance?.Play("upgrade_success");
-        Debug.Log($"[ShopManager] Worker hired: {config.displayName}");
+        List<WorkerData> list = new List<WorkerData>(PlayerData.Instance.workers ?? new WorkerData[0]);
+        list.Add(new WorkerData(workerType, 1, true));
+        PlayerData.Instance.workers = list.ToArray();
+        WorkerManager.Instance?.RefreshWorkers();
+        GameEvents.RaiseWorkerHired(workerType);
         return true;
     }
 
     public bool IsWorkerHired(string workerType)
     {
-        WorkerData worker = FindWorker(workerType);
-        return worker != null && worker.isUnlocked;
-    }
-
-    public bool TryUpgradeWorker(string workerType)
-    {
-        if (PlayerData.Instance == null) return false;
-
-        WorkerData worker = FindWorker(workerType);
-        if (worker == null || !worker.isUnlocked) return false;
-
-        WorkerConfigData config = GetWorkerConfig(workerType);
-        if (config == null) return false;
-
-        // Max level is bonusValues.Length (5)
-        if (worker.level >= config.bonusValues.Length) return false;
-
-        float cost = GetWorkerUpgradeCost(workerType);
-        if (!PlayerData.Instance.SpendMoney(cost)) return false;
-
-        worker.level++;
-
-        AudioManager.Instance?.Play("upgrade_success");
-        Debug.Log($"[ShopManager] Worker upgraded: {config.displayName} → Level {worker.level}");
-        return true;
-    }
-
-    public float GetWorkerUpgradeCost(string workerType)
-    {
-        WorkerData worker = FindWorker(workerType);
-        if (worker == null || !worker.isUnlocked) return 0f;
-
-        WorkerConfigData config = GetWorkerConfig(workerType);
-        if (config == null || config.upgradeCosts == null) return 0f;
-
-        // upgradeCosts index: level 1→2 is index 0, level 2→3 is index 1, etc.
-        int upgradeIndex = worker.level - 1;
-        if (upgradeIndex < 0 || upgradeIndex >= config.upgradeCosts.Length) return 0f;
-
-        return config.upgradeCosts[upgradeIndex];
-    }
-
-    public int GetWorkerLevel(string workerType)
-    {
-        WorkerData worker = FindWorker(workerType);
-        if (worker == null || !worker.isUnlocked) return 0;
-        return worker.level;
-    }
-
-    // ───────────────────────── Internal Helpers ─────────────────────────
-
-    private float GetWorkerBonusValue(string workerType, float defaultValue)
-    {
-        WorkerData worker = FindWorker(workerType);
-        if (worker == null || !worker.isUnlocked) return defaultValue;
-
-        WorkerConfigData config = GetWorkerConfig(workerType);
-        if (config == null || config.bonusValues == null || config.bonusValues.Length == 0)
-            return defaultValue;
-
-        int index = Mathf.Clamp(worker.level - 1, 0, config.bonusValues.Length - 1);
-        return config.bonusValues[index];
-    }
-
-    private WorkerData FindWorker(string workerType)
-    {
-        if (PlayerData.Instance == null || PlayerData.Instance.workers == null) return null;
-        foreach (var w in PlayerData.Instance.workers)
+        if (PlayerData.Instance == null || PlayerData.Instance.workers == null) return false;
+        for (int i = 0; i < PlayerData.Instance.workers.Length; i++)
         {
-            if (w.workerType == workerType) return w;
+            WorkerData w = PlayerData.Instance.workers[i];
+            if (w != null && w.workerType == workerType && w.isUnlocked) return true;
         }
-        return null;
+        return false;
     }
 
-    private WorkerConfigData GetWorkerConfig(string workerType)
+    public float GetWorkerSalaryPerMinute(string workerType)
     {
-        if (workerConfigs == null) return null;
-        foreach (var c in workerConfigs)
-        {
-            if (c.workerType == workerType) return c;
-        }
-        return null;
+        return workerMinuteSalary.ContainsKey(workerType) ? workerMinuteSalary[workerType] : 0f;
+    }
+
+    public float GetOfflineMultiplier()
+    {
+        float workerBoost = WorkerManager.Instance != null ? WorkerManager.Instance.GetOfflineWorkerMultiplier() : 1f;
+        return workerBoost;
     }
 }

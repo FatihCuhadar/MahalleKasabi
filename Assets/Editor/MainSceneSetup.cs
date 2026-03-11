@@ -26,6 +26,9 @@ public static class MainSceneSetup
         CreateManager("_OrderManager").AddComponent<OrderManager>();
         CreateManager("_ShopManager").AddComponent<ShopManager>();
         CreateManager("_OfflineEarningsManager").AddComponent<OfflineEarningsManager>();
+        CreateManager("_WorkerManager").AddComponent<WorkerManager>();
+        CreateManager("_DailyQuestManager").AddComponent<DailyQuestManager>();
+        CreateManager("_AchievementManager").AddComponent<AchievementManager>();
 
         var audioManagerGO = CreateManager("_AudioManager");
         var audioMgr = audioManagerGO.AddComponent<AudioManager>();
@@ -128,6 +131,30 @@ public static class MainSceneSetup
         customerCountRect.anchoredPosition = new Vector2(-20f, 24f);
         customerCountRect.sizeDelta = new Vector2(180f, 40f);
 
+        var xpBarBg = CreatePanel(hudGO.transform, "XpBarBG", true);
+        xpBarBg.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.2f);
+        var xpBgRect = xpBarBg.GetComponent<RectTransform>();
+        SetAnchors(xpBgRect, new Vector2(0f, 1f), new Vector2(0f, 1f));
+        xpBgRect.pivot = new Vector2(0f, 1f);
+        xpBgRect.anchoredPosition = new Vector2(24f, -72f);
+        xpBgRect.sizeDelta = new Vector2(230f, 10f);
+        var xpBarFill = CreateFillImage(xpBarBg.transform, "XpBarFill", new Color(0.24f, 0.82f, 0.82f, 1f));
+        StretchFull(xpBarFill.GetComponent<RectTransform>());
+
+        var questBtnGO = CreateButton(hudGO.transform, "QuestButton", "GOREVLER", new Color(0.12f, 0.5f, 0.3f, 0.85f));
+        var questBtnRect = questBtnGO.GetComponent<RectTransform>();
+        SetAnchors(questBtnRect, new Vector2(1f, 0f), new Vector2(1f, 0f));
+        questBtnRect.pivot = new Vector2(1f, 0f);
+        questBtnRect.anchoredPosition = new Vector2(-20f, 72f);
+        questBtnRect.sizeDelta = new Vector2(180f, 48f);
+
+        var workersHudTextGO = CreateTMPText(hudGO.transform, "WorkersHudText", "Calisanlar: 0", 22, WHITE, TextAlignmentOptions.Left);
+        var workersHudRect = workersHudTextGO.GetComponent<RectTransform>();
+        SetAnchors(workersHudRect, new Vector2(0f, 0f), new Vector2(0f, 0f));
+        workersHudRect.pivot = new Vector2(0f, 0f);
+        workersHudRect.anchoredPosition = new Vector2(20f, 24f);
+        workersHudRect.sizeDelta = new Vector2(260f, 36f);
+
         var uiManager = canvasGO.AddComponent<UIManager>();
 
         var upgradePanelGO = CreatePanel(canvasGO.transform, "UpgradePanel", false);
@@ -214,6 +241,7 @@ public static class MainSceneSetup
         uiSO.FindProperty("toastText").objectReferenceValue = toastTextGO.GetComponent<TMP_Text>();
         uiSO.FindProperty("toastCanvasGroup").objectReferenceValue = toastCG;
         uiSO.FindProperty("toastRect").objectReferenceValue = toastGO.GetComponent<RectTransform>();
+        uiSO.FindProperty("floatingRoot").objectReferenceValue = hudGO.GetComponent<RectTransform>();
         uiSO.ApplyModifiedProperties();
 
         var hudSO = new SerializedObject(hudController);
@@ -258,7 +286,9 @@ public static class MainSceneSetup
         for (int i = 0; i < productGuids.Length; i++)
         {
             string path = AssetDatabase.GUIDToAssetPath(productGuids[i]);
-            productProp.GetArrayElementAtIndex(i).objectReferenceValue = AssetDatabase.LoadAssetAtPath<ProductData>(path);
+            var product = AssetDatabase.LoadAssetAtPath<ProductData>(path);
+            ApplyDefaultPrepTime(product);
+            productProp.GetArrayElementAtIndex(i).objectReferenceValue = product;
         }
         custSO.ApplyModifiedProperties();
 
@@ -416,5 +446,18 @@ public static class MainSceneSetup
     {
         rect.anchorMin = min;
         rect.anchorMax = max;
+    }
+
+    static void ApplyDefaultPrepTime(ProductData product)
+    {
+        if (product == null) return;
+        string n = (product.productName ?? string.Empty).ToLower();
+        if (n.Contains("kiyma")) product.prepTime = 3f;
+        else if (n.Contains("kofte")) product.prepTime = 5f;
+        else if (n.Contains("biftek") || n.Contains("dana")) product.prepTime = 8f;
+        else if (n.Contains("kuzu")) product.prepTime = 10f;
+        else if (n.Contains("sucuk")) product.prepTime = 4f;
+        else product.prepTime = Mathf.Max(2f, product.GetPrepTime());
+        EditorUtility.SetDirty(product);
     }
 }

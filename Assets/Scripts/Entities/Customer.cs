@@ -1,6 +1,6 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
 
 public class Customer : MonoBehaviour
 {
@@ -11,18 +11,19 @@ public class Customer : MonoBehaviour
     [SerializeField] private SpriteRenderer spriteRenderer;
     [SerializeField] private Sprite happySprite;
     [SerializeField] private Sprite angrySprite;
+    [SerializeField] private Sprite vipSprite;
 
     private float patienceTime;
     private float bonusMultiplier;
-    private int orderQuantity;
     private Transform counterPosition;
     private float counterOffsetX;
     private CustomerOrderBubble bubble;
     private Coroutine patienceCoroutine;
     private Coroutine slideCoroutine;
     private bool orderFulfilled;
+    private Order currentOrder;
+    private CustomerTypeStats stats;
 
-    // Animator parameter names
     private static readonly int AnimWalk = Animator.StringToHash("Walk");
     private static readonly string AnimIdle = "Idle";
     private static readonly string AnimHappy = "Happy";
@@ -30,56 +31,36 @@ public class Customer : MonoBehaviour
 
     public CustomerType Type => customerType;
     public float BonusMultiplier => bonusMultiplier;
-    public int OrderQuantity => orderQuantity;
 
     public void Initialize(CustomerType type, Transform counter, float offsetX = 0f)
     {
         customerType = type;
         counterPosition = counter;
         counterOffsetX = offsetX;
+        stats = CustomerData.Get(type);
+        patienceTime = stats.patienceSeconds;
+        bonusMultiplier = stats.paymentMultiplier;
 
-        switch (type)
+        if (spriteRenderer != null)
         {
-            case CustomerType.Normal:
-                patienceTime = 30f;
-                bonusMultiplier = 1f;
-                orderQuantity = 1;
-                break;
-            case CustomerType.Aceleci:
-                patienceTime = 10f;
-                bonusMultiplier = 1.5f;
-                orderQuantity = 1;
-                break;
-            case CustomerType.TopluSiparis:
-                patienceTime = 20f;
-                bonusMultiplier = 3f;
-                orderQuantity = 3;
-                break;
-            case CustomerType.VIP:
-                patienceTime = 60f;
-                bonusMultiplier = 2f;
-                orderQuantity = 1;
-                break;
+            spriteRenderer.color = stats.tintColor;
+            if (type == CustomerType.VIP && vipSprite != null)
+                spriteRenderer.sprite = vipSprite;
         }
 
-        Debug.Log($"[Customer] Initialized: type={type}, offsetX={offsetX:F1}, counter={(counterPosition != null ? counterPosition.position.ToString() : "NULL")}");
         StartCoroutine(MoveToCounter());
     }
 
     private IEnumerator MoveToCounter()
     {
         if (animator != null) animator.SetBool(AnimWalk, true);
-
-        Vector3 basePos = counterPosition != null
-            ? counterPosition.position
-            : transform.position + Vector3.left * 3f;
+        Vector3 basePos = counterPosition != null ? counterPosition.position : transform.position + Vector3.left * 3f;
         Vector3 target = basePos + new Vector3(counterOffsetX, 0f, 0f);
 
         while (Vector3.Distance(transform.position, target) > 0.05f)
         {
             if (!gameObject.activeSelf) yield break;
-            transform.position = Vector3.MoveTowards(
-                transform.position, target, moveSpeed * Time.deltaTime);
+            transform.position = Vector3.MoveTowards(transform.position, target, moveSpeed * Time.deltaTime);
             yield return null;
         }
 
@@ -89,109 +70,81 @@ public class Customer : MonoBehaviour
             animator.SetBool(AnimWalk, false);
             animator.SetTrigger(AnimIdle);
         }
-
-        Debug.Log($"[Customer] Arrived at counter ({target}). Showing order...");
         ShowOrder();
     }
 
     private void ShowOrder()
     {
-        // Pick a random unlocked product
-        ProductData product = GetRandomProduct();
-        if (product == null)
-        {
-            Debug.LogWarning($"[Customer] {customerType} — GetRandomProduct returned NULL! No products available.");
-            return;
-        }
+        List<ProductData> products = GetUnlockedProducts();
+        if (products.Count == 0) return;
 
-        // Register order with OrderManager
+        int lineCount = Random.Range(1, 4);
         Order order = new Order
         {
             customer = this,
-            product = product,
-            quantity = orderQuantity,
-            bonusMultiplier = bonusMultiplier,
-            isFulfilled = false
+            bonusMultiplier = bonusMultiplier
         };
-        order.payment = OrderManager.Instance != null
-            ? OrderManager.Instance.CalculatePayment(order)
-            : product.basePrice * orderQuantity * bonusMultiplier;
 
-        if (OrderManager.Instance != null)
+        for (int i = 0; i < lineCount; i++)
         {
-            OrderManager.Instance.RegisterOrder(order);
-            Debug.Log($"[Customer] Order registered: {product.productName} x{orderQuantity}, payment={order.payment:F0} TL");
-        }
-        else
-        {
-            Debug.LogWarning("[Customer] OrderManager.Instance is NULL — cannot register order!");
+            ProductData product = products[Random.Range(0, products.Count)];
+            int quantity = Random.Range(1, 3);
+            order.lines.Add(new OrderLine { product = product, quantity = quantity, isPrepared = false });
         }
 
-        // Show bubble
+        order.payment = OrderManager.Instance != null ? OrderManager.Instance.CalculatePayment(order) : 0f;
+        currentOrder = order;
+        OrderManager.Instance?.RegisterOrder(order);
+
         if (orderBubblePrefab != null)
         {
             GameObject bubbleGO = Instantiate(orderBubblePrefab);
             bubble = bubbleGO.GetComponent<CustomerOrderBubble>();
             bubble?.AttachTo(transform, new Vector3(0f, 1.8f, 0f));
-            bubble?.Show(product, orderQuantity);
-        }
-        else
-        {
-            Debug.LogWarning("[Customer] orderBubblePrefab is NULL — no bubble shown");
+            bubble?.ShowOrder(order, stats);
         }
 
-        // Start patience countdown
         patienceCoroutine = StartCoroutine(PatienceCountdown());
     }
 
-    private ProductData GetRandomProduct()
+    public void OnOrderLinePrepared()
     {
-        ProductData[] allProducts = CustomerManager.Instance != null
-            ? CustomerManager.Instance.GetProductDataList()
-            : null;
+        if (currentOrder == null || bubble == null) return;
+        bubble.ShowOrder(currentOrder, stats);
+    }
 
-        if (allProducts == null || allProducts.Length == 0)
+    private List<ProductData> GetUnlockedProducts()
+    {
+        ProductData[] allProducts = CustomerManager.Instance != null ? CustomerManager.Instance.GetProductDataList() : null;
+        List<ProductData> list = new List<ProductData>();
+        if (allProducts == null) return list;
+        int level = PlayerData.Instance != null ? PlayerData.Instance.shopLevel : 1;
+        for (int i = 0; i < allProducts.Length; i++)
         {
-            Debug.LogWarning($"[Customer] ProductDataList is {(allProducts == null ? "NULL" : "EMPTY")}! CustomerManager.Instance={(CustomerManager.Instance != null ? "OK" : "NULL")}");
-            return null;
+            ProductData p = allProducts[i];
+            if (p == null) continue;
+            bool unlocked = ShopManager.Instance != null ? ShopManager.Instance.IsProductUnlocked(p) : p.unlockLevel <= level;
+            if (unlocked) list.Add(p);
         }
-
-        int shopLevel = PlayerData.Instance != null ? PlayerData.Instance.shopLevel : 1;
-        var unlocked = new System.Collections.Generic.List<ProductData>();
-        foreach (var p in allProducts)
-        {
-            if (p != null && p.unlockLevel <= shopLevel) unlocked.Add(p);
-        }
-        if (unlocked.Count == 0) return allProducts[0];
-        return unlocked[Random.Range(0, unlocked.Count)];
+        return list;
     }
 
     private IEnumerator PatienceCountdown()
     {
         float elapsed = 0f;
-
         while (elapsed < patienceTime)
         {
             if (!gameObject.activeSelf) yield break;
-
             elapsed += Time.deltaTime;
             float normalized = 1f - (elapsed / patienceTime);
-
-            // Color: green → yellow → red
-            Color barColor;
-            if (normalized > 0.5f)
-                barColor = Color.Lerp(Color.yellow, Color.green, (normalized - 0.5f) * 2f);
-            else
-                barColor = Color.Lerp(Color.red, Color.yellow, normalized * 2f);
-
+            Color barColor = normalized > 0.5f
+                ? Color.Lerp(Color.yellow, Color.green, (normalized - 0.5f) * 2f)
+                : Color.Lerp(Color.red, Color.yellow, normalized * 2f);
             bubble?.UpdatePatience(normalized, barColor);
             yield return null;
         }
 
-        if (!orderFulfilled)
-        {
-            OnPatienceExpired();
-        }
+        if (!orderFulfilled) OnPatienceExpired();
     }
 
     public void OnOrderFulfilled(float payment)
@@ -199,14 +152,13 @@ public class Customer : MonoBehaviour
         if (orderFulfilled) return;
         orderFulfilled = true;
 
-        Debug.Log($"[Customer] Order fulfilled! Payment: {payment:F0} TL");
-
         if (patienceCoroutine != null) StopCoroutine(patienceCoroutine);
         if (animator != null) animator.SetTrigger(AnimHappy);
         if (spriteRenderer != null && happySprite != null) spriteRenderer.sprite = happySprite;
 
         PlayerData.Instance?.AddMoney(payment);
         AudioManager.Instance?.Play("coin_collect");
+        GameEvents.RaiseCustomerServed(customerType);
         StartCoroutine(AnimationHelper.PunchScale(transform, 0.2f, 0.3f));
 
         bubble?.Hide();
@@ -217,18 +169,13 @@ public class Customer : MonoBehaviour
     {
         if (orderFulfilled) return;
         orderFulfilled = true;
-
         if (animator != null) animator.SetTrigger(AnimAngry);
         if (spriteRenderer != null && angrySprite != null) spriteRenderer.sprite = angrySprite;
         AudioManager.Instance?.Play("customer_angry");
-
         bubble?.Hide();
         StartCoroutine(Leave());
     }
 
-    /// <summary>
-    /// Smoothly slide to a new queue position (called when queue shifts).
-    /// </summary>
     public void SlideToPosition(Vector3 newTarget)
     {
         if (slideCoroutine != null) StopCoroutine(slideCoroutine);
@@ -238,39 +185,31 @@ public class Customer : MonoBehaviour
     private IEnumerator SlideRoutine(Vector3 target)
     {
         if (animator != null) animator.SetBool(AnimWalk, true);
-
         while (Vector3.Distance(transform.position, target) > 0.05f)
         {
             if (!gameObject.activeSelf) yield break;
-            transform.position = Vector3.MoveTowards(
-                transform.position, target, moveSpeed * Time.deltaTime);
+            transform.position = Vector3.MoveTowards(transform.position, target, moveSpeed * Time.deltaTime);
             yield return null;
         }
-
         transform.position = target;
         if (animator != null)
         {
             animator.SetBool(AnimWalk, false);
             animator.SetTrigger(AnimIdle);
         }
-
         slideCoroutine = null;
     }
 
     private IEnumerator Leave()
     {
         if (animator != null) animator.SetBool(AnimWalk, true);
-
         Vector3 exitTarget = transform.position + Vector3.right * 10f;
-
         while (Vector3.Distance(transform.position, exitTarget) > 0.1f)
         {
             if (!gameObject.activeSelf) yield break;
-            transform.position = Vector3.MoveTowards(
-                transform.position, exitTarget, moveSpeed * Time.deltaTime);
+            transform.position = Vector3.MoveTowards(transform.position, exitTarget, moveSpeed * Time.deltaTime);
             yield return null;
         }
-
         CustomerManager.Instance?.CustomerLeft(this);
         Destroy(gameObject);
     }

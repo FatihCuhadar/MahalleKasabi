@@ -22,6 +22,7 @@ public class UIManager : MonoBehaviour
     [SerializeField] private TMP_Text toastText;
     [SerializeField] private CanvasGroup toastCanvasGroup;
     [SerializeField] private RectTransform toastRect;
+    [SerializeField] private RectTransform floatingRoot;
 
     private Coroutine toastCoroutine;
     private Coroutine moneyPunchCoroutine;
@@ -50,12 +51,16 @@ public class UIManager : MonoBehaviour
             toastCanvasGroup.alpha = 0f;
 
         RefreshMoneyUI();
+        GameEvents.OnMoneyEarned += ShowMoneyFloating;
+        GameEvents.OnShopLevelChanged += OnShopLevelChanged;
     }
 
     void OnDestroy()
     {
         if (toastCoroutine != null)
             StopCoroutine(toastCoroutine);
+        GameEvents.OnMoneyEarned -= ShowMoneyFloating;
+        GameEvents.OnShopLevelChanged -= OnShopLevelChanged;
     }
 
     void Update()
@@ -213,5 +218,36 @@ public class UIManager : MonoBehaviour
         Vector2 from = new Vector2(0f, -220f);
         yield return StartCoroutine(AnimationHelper.SlideIn(panelRect, from, target, 0.35f));
         yield return StartCoroutine(AnimationHelper.FadeIn(cg, 0.2f));
+    }
+
+    private void ShowMoneyFloating(float amount)
+    {
+        if (amount <= 0f) return;
+        RectTransform parent = floatingRoot != null ? floatingRoot : transform as RectTransform;
+        if (parent == null) return;
+
+        GameObject go = new GameObject("FloatingMoney", typeof(RectTransform), typeof(CanvasGroup), typeof(TextMeshProUGUI), typeof(FloatingText));
+        go.transform.SetParent(parent, false);
+        RectTransform rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = new Vector2(1f, 1f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.pivot = new Vector2(1f, 1f);
+        rt.anchoredPosition = new Vector2(-20f, -120f);
+        rt.sizeDelta = new Vector2(240f, 60f);
+
+        TextMeshProUGUI text = go.GetComponent<TextMeshProUGUI>();
+        text.alignment = TextAlignmentOptions.Right;
+        text.fontSize = 30;
+        text.raycastTarget = false;
+
+        FloatingText floating = go.GetComponent<FloatingText>();
+        floating.Setup("+" + FormatMoney(amount), new Color(0.2f, 0.9f, 0.35f));
+    }
+
+    private void OnShopLevelChanged(int level)
+    {
+        ShowToast($"SEVIYE ATLADI: {level}", new Color(0.95f, 0.75f, 0.2f), 2.5f);
+        if (moneyContainer != null)
+            StartCoroutine(AnimationHelper.ShakePosition(moneyContainer, 8f, 0.35f));
     }
 }

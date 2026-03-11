@@ -85,6 +85,7 @@ public class CustomerManager : MonoBehaviour
             float speedMultiplier = ShopManager.Instance != null
                 ? ShopManager.Instance.GetSpeedMultiplier()
                 : 1f;
+            maxCustomers = ShopManager.Instance != null ? ShopManager.Instance.GetMaxCustomers() : maxCustomers;
 
             float interval = baseSpawnInterval / Mathf.Max(speedMultiplier, 0.1f);
             yield return new WaitForSeconds(interval);
@@ -141,30 +142,20 @@ public class CustomerManager : MonoBehaviour
 
     private CustomerType PickCustomerType()
     {
-        int shopLevel = PlayerData.Instance != null ? PlayerData.Instance.shopLevel : 1;
-        float roll = Random.value;
+        float total =
+            CustomerData.Get(CustomerType.Normal).spawnWeight +
+            CustomerData.Get(CustomerType.Aceleci).spawnWeight +
+            CustomerData.Get(CustomerType.Sabirli).spawnWeight +
+            CustomerData.Get(CustomerType.VIP).spawnWeight;
 
-        if (shopLevel >= 7)
-        {
-            // Normal %40, Aceleci %25, VIP %20, TopluSiparis %15
-            if (roll < 0.40f) return CustomerType.Normal;
-            if (roll < 0.65f) return CustomerType.Aceleci;
-            if (roll < 0.85f) return CustomerType.VIP;
-            return CustomerType.TopluSiparis;
-        }
-        else if (shopLevel >= 4)
-        {
-            // Normal %60, Aceleci %25, VIP %15
-            if (roll < 0.60f) return CustomerType.Normal;
-            if (roll < 0.85f) return CustomerType.Aceleci;
-            return CustomerType.VIP;
-        }
-        else
-        {
-            // Normal %80, Aceleci %20
-            if (roll < 0.80f) return CustomerType.Normal;
-            return CustomerType.Aceleci;
-        }
+        float roll = Random.value * total;
+        float current = CustomerData.Get(CustomerType.Normal).spawnWeight;
+        if (roll < current) return CustomerType.Normal;
+        current += CustomerData.Get(CustomerType.Aceleci).spawnWeight;
+        if (roll < current) return CustomerType.Aceleci;
+        current += CustomerData.Get(CustomerType.Sabirli).spawnWeight;
+        if (roll < current) return CustomerType.Sabirli;
+        return CustomerType.VIP;
     }
 
     public void CustomerLeft(Customer customer)

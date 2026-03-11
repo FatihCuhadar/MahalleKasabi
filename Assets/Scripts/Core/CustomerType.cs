@@ -2,6 +2,6 @@ public enum CustomerType
 {
     Normal,
     Aceleci,
-    TopluSiparis,
+    Sabirli,
     VIP
 }
